@@ -1,3 +1,4 @@
+
 document.getElementById('pingpong-canvas')?.remove();
 document.getElementById('pause-button')?.remove();
 document.getElementById('start-menu')?.remove();
@@ -36,46 +37,36 @@ winnerMsg.style.margin = '0 0 20px 0';
 winnerMsg.style.textShadow = '0 0 10px #fff';
 winnerMsg.textContent = '';
 
-const powerupButton = document.createElement('button');
-powerupButton.textContent = '🎮 Play with Power-Ups';
-Object.assign(powerupButton.style, {
-  display: 'block',
-  width: '300px',
-  margin: '20px',
-  padding: '20px',
-  fontSize: '24px',
-  background: 'linear-gradient(45deg, #3a86ff, #8338ec)',
-  border: 'none',
-  borderRadius: '12px',
-  color: '#fff',
-  cursor: 'pointer',
-  transition: 'transform 0.2s'
-});
+const difficultyMenu = document.createElement('div');
+difficultyMenu.style.margin = '20px 0';
 
-const classicButton = document.createElement('button');
-classicButton.textContent = '🏓 Classic Mode';
-Object.assign(classicButton.style, {
-  display: 'block',
-  width: '300px',
-  margin: '20px',
-  padding: '20px',
-  fontSize: '24px',
-  background: 'linear-gradient(45deg, #2ecc71, #27ae60)',
-  border: 'none',
-  borderRadius: '12px',
-  color: '#fff',
-  cursor: 'pointer',
-  transition: 'transform 0.2s'
-});
+const difficultyLabel = document.createElement('div');
+difficultyLabel.textContent = 'Select Difficulty:';
+difficultyLabel.style.fontSize = '24px';
+difficultyLabel.style.margin = '0 0 15px 0';
+
+const easyButton = createDifficultyButton('😌 Easy');
+const mediumButton = createDifficultyButton('🎯 Medium');
+const hardButton = createDifficultyButton('🔥 Hard');
+
+difficultyMenu.appendChild(difficultyLabel);
+difficultyMenu.appendChild(easyButton);
+difficultyMenu.appendChild(mediumButton);
+difficultyMenu.appendChild(hardButton);
+
+const powerupButton = createModeButton('🎮 Power-Up Mode', '#3a86ff', '#8338ec');
+const classicButton = createModeButton('🏓 Classic Mode', '#2ecc71', '#27ae60');
 
 startContent.appendChild(title);
 startContent.appendChild(winnerMsg);
+startContent.appendChild(difficultyMenu);
 startContent.appendChild(powerupButton);
 startContent.appendChild(classicButton);
 startMenu.appendChild(startContent);
 document.body.appendChild(startMenu);
 
 let powerUpsEnabled = true;
+let aiDifficulty = 'medium';
 let canvas, pauseButton, pauseMenu, ctx;
 let playerPaddle, aiPaddle, balls, activePowerUp, powerUpTimeout;
 let playerScore = 0, aiScore = 0;
@@ -94,6 +85,51 @@ const POWERUP_TYPES = {
   SLOWMO: { color: '#00f2ea', symbol: '🐢', duration: 5000, glow: '#b3f7ff' },
   PADDLE_GROW: { color: '#3ae374', symbol: '▲', duration: 5000, glow: '#caffbf' }
 };
+
+function createDifficultyButton(text) {
+  const button = document.createElement('button');
+  button.textContent = text;
+  button.style.display = 'inline-block';
+  button.style.width = '120px';
+  button.style.margin = '10px';
+  button.style.padding = '12px';
+  button.style.fontSize = '18px';
+  button.style.background = '#2c3e50';
+  button.style.border = 'none';
+  button.style.borderRadius = '8px';
+  button.style.color = '#fff';
+  button.style.cursor = 'pointer';
+  button.style.transition = 'transform 0.2s';
+  return button;
+}
+
+function createModeButton(text, color1, color2) {
+  const button = document.createElement('button');
+  button.textContent = text;
+  button.style.display = 'block';
+  button.style.width = '300px';
+  button.style.margin = '20px auto';
+  button.style.padding = '20px';
+  button.style.fontSize = '24px';
+  button.style.background = `linear-gradient(45deg, ${color1}, ${color2})`;
+  button.style.border = 'none';
+  button.style.borderRadius = '12px';
+  button.style.color = '#fff';
+  button.style.cursor = 'pointer';
+  button.style.transition = 'transform 0.2s';
+  return button;
+}
+
+easyButton.onclick = () => { aiDifficulty = 'easy'; highlightDifficulty(); };
+mediumButton.onclick = () => { aiDifficulty = 'medium'; highlightDifficulty(); };
+hardButton.onclick = () => { aiDifficulty = 'hard'; highlightDifficulty(); };
+
+function highlightDifficulty() {
+  easyButton.style.outline = aiDifficulty === 'easy' ? '3px solid #f4d35e' : '';
+  mediumButton.style.outline = aiDifficulty === 'medium' ? '3px solid #f4d35e' : '';
+  hardButton.style.outline = aiDifficulty === 'hard' ? '3px solid #f4d35e' : '';
+}
+highlightDifficulty();
 
 function initializeGame(withPowerups) {
   powerUpsEnabled = withPowerups;
@@ -458,9 +494,32 @@ function update() {
   if (downPressed) playerPaddle.y += 6;
   playerPaddle.y = clamp(playerPaddle.y, 0, canvas.height - playerPaddle.height);
 
+  // AI movement with difficulty
   if (!waitingToServe && balls.length > 0) {
-    const targetY = balls[0].y - aiPaddle.height/2;
-    aiPaddle.y += clamp(targetY - aiPaddle.y, -6 * 0.7, 6 * 0.7);
+    let targetY = balls[0].y - aiPaddle.height/2;
+    let speedMultiplier = 0.7;
+    let accuracy = 1;
+
+    if (aiDifficulty === 'easy') {
+      speedMultiplier = 0.5;
+      accuracy = 0.8;
+      targetY += (Math.random() - 0.5) * 50;
+    } else if (aiDifficulty === 'medium') {
+      speedMultiplier = 0.7;
+      accuracy = 0.9;
+      targetY += (Math.random() - 0.5) * 20;
+    } else if (aiDifficulty === 'hard') {
+      speedMultiplier = 0.9;
+      accuracy = 1.0;
+      if (balls[0].speedX > 0) {
+        const predictX = canvas.width - 10 - aiPaddle.width;
+        const timeToReach = (predictX - balls[0].x) / balls[0].speedX;
+        targetY = balls[0].y + (balls[0].speedY * timeToReach);
+      }
+    }
+
+    const moveDistance = clamp(targetY - aiPaddle.y, -6 * speedMultiplier, 6 * speedMultiplier) * accuracy;
+    aiPaddle.y += moveDistance;
     aiPaddle.y = clamp(aiPaddle.y, 0, canvas.height - aiPaddle.height);
   }
 
