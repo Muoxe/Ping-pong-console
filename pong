@@ -1,0 +1,524 @@
+document.getElementById('pingpong-canvas')?.remove();
+document.getElementById('pause-button')?.remove();
+document.getElementById('start-menu')?.remove();
+document.getElementById('pause-menu')?.remove();
+
+const startMenu = document.createElement('div');
+startMenu.id = 'start-menu';
+Object.assign(startMenu.style, {
+  position: 'fixed',
+  top: '0',
+  left: '0',
+  width: '100vw',
+  height: '100vh',
+  background: 'rgba(0, 0, 0, 0.9)',
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+  zIndex: 10002,
+  backdropFilter: 'blur(5px)'
+});
+
+const startContent = document.createElement('div');
+startContent.style.textAlign = 'center';
+startContent.style.color = '#fff';
+startContent.style.fontFamily = 'Arial, sans-serif';
+
+const title = document.createElement('h1');
+title.textContent = 'Ping Pong';
+title.style.fontSize = '48px';
+title.style.margin = '0 0 40px 0';
+title.style.textShadow = '0 0 20px #3a86ff';
+
+const winnerMsg = document.createElement('div');
+winnerMsg.style.fontSize = '32px';
+winnerMsg.style.margin = '0 0 20px 0';
+winnerMsg.style.textShadow = '0 0 10px #fff';
+winnerMsg.textContent = '';
+
+const powerupButton = document.createElement('button');
+powerupButton.textContent = '🎮 Play with Power-Ups';
+Object.assign(powerupButton.style, {
+  display: 'block',
+  width: '300px',
+  margin: '20px',
+  padding: '20px',
+  fontSize: '24px',
+  background: 'linear-gradient(45deg, #3a86ff, #8338ec)',
+  border: 'none',
+  borderRadius: '12px',
+  color: '#fff',
+  cursor: 'pointer',
+  transition: 'transform 0.2s'
+});
+
+const classicButton = document.createElement('button');
+classicButton.textContent = '🏓 Classic Mode';
+Object.assign(classicButton.style, {
+  display: 'block',
+  width: '300px',
+  margin: '20px',
+  padding: '20px',
+  fontSize: '24px',
+  background: 'linear-gradient(45deg, #2ecc71, #27ae60)',
+  border: 'none',
+  borderRadius: '12px',
+  color: '#fff',
+  cursor: 'pointer',
+  transition: 'transform 0.2s'
+});
+
+startContent.appendChild(title);
+startContent.appendChild(winnerMsg);
+startContent.appendChild(powerupButton);
+startContent.appendChild(classicButton);
+startMenu.appendChild(startContent);
+document.body.appendChild(startMenu);
+
+let powerUpsEnabled = true;
+let canvas, pauseButton, pauseMenu, ctx;
+let playerPaddle, aiPaddle, balls, activePowerUp, powerUpTimeout;
+let playerScore = 0, aiScore = 0;
+let waitingToServe = false, serveCountdown = 0, countdownInterval;
+let isPaused = false;
+let animationId;
+let gameOver = false;
+
+const baseBallSpeedX = 4;
+const baseBallSpeedY = 3.2;
+const speedIncreaseFactor = 1.05;
+const maxBallSpeed = 7;
+
+const POWERUP_TYPES = {
+  MULTIBALL: { color: '#ff006e', symbol: '✚', duration: 5000, glow: '#ffb3d1' },
+  SLOWMO: { color: '#00f2ea', symbol: '🐢', duration: 5000, glow: '#b3f7ff' },
+  PADDLE_GROW: { color: '#3ae374', symbol: '▲', duration: 5000, glow: '#caffbf' }
+};
+
+function initializeGame(withPowerups) {
+  powerUpsEnabled = withPowerups;
+  startMenu.style.display = 'none';
+  winnerMsg.textContent = '';
+  playerScore = 0;
+  aiScore = 0;
+  gameOver = false;
+  createGameElements();
+  resetBall();
+  loop();
+}
+
+powerupButton.onclick = () => initializeGame(true);
+classicButton.onclick = () => initializeGame(false);
+
+function createGameElements() {
+  document.getElementById('pingpong-canvas')?.remove();
+  document.getElementById('pause-button')?.remove();
+  document.getElementById('pause-menu')?.remove();
+
+  canvas = document.createElement('canvas');
+  canvas.id = 'pingpong-canvas';
+  canvas.width = 600;
+  canvas.height = 400;
+  canvas.style.position = 'fixed';
+  canvas.style.left = '50%';
+  canvas.style.top = '50%';
+  canvas.style.transform = 'translate(-50%, -50%)';
+  canvas.style.borderRadius = '24px';
+  canvas.style.boxShadow = '0 8px 32px rgba(0,0,0,0.4), 0 0 0 4px #222 inset';
+  canvas.style.zIndex = 9999;
+  document.body.appendChild(canvas);
+
+  ctx = canvas.getContext('2d');
+
+  playerPaddle = {
+    y: (canvas.height - 80) / 2,
+    height: 80,
+    width: 12,
+    powerUpTimeout: null
+  };
+  aiPaddle = {
+    y: (canvas.height - 80) / 2,
+    height: 80,
+    width: 12,
+    powerUpTimeout: null
+  };
+
+  pauseButton = document.createElement('button');
+  pauseButton.id = 'pause-button';
+  pauseButton.textContent = '⏸️';
+  pauseButton.style.position = 'fixed';
+  pauseButton.style.padding = '12px 24px';
+  pauseButton.style.fontSize = '24px';
+  pauseButton.style.background = 'rgba(40, 40, 40, 0.9)';
+  pauseButton.style.border = '2px solid #fff';
+  pauseButton.style.borderRadius = '12px';
+  pauseButton.style.color = '#fff';
+  pauseButton.style.cursor = 'pointer';
+  pauseButton.style.zIndex = '10000';
+  pauseButton.style.transition = 'transform 0.2s';
+  document.body.appendChild(pauseButton);
+  updatePauseButtonPosition();
+
+  pauseMenu = document.createElement('div');
+  pauseMenu.id = 'pause-menu';
+  pauseMenu.style.position = 'fixed';
+  pauseMenu.style.top = '0';
+  pauseMenu.style.left = '0';
+  pauseMenu.style.width = '100vw';
+  pauseMenu.style.height = '100vh';
+  pauseMenu.style.background = 'rgba(0, 0, 0, 0.9)';
+  pauseMenu.style.display = 'none';
+  pauseMenu.style.justifyContent = 'center';
+  pauseMenu.style.alignItems = 'center';
+  pauseMenu.style.zIndex = '10001';
+  pauseMenu.style.backdropFilter = 'blur(5px)';
+
+  const pauseContent = document.createElement('div');
+  pauseContent.style.textAlign = 'center';
+  pauseContent.style.color = '#fff';
+  pauseContent.style.fontFamily = 'Arial, sans-serif';
+
+  const pauseTitle = document.createElement('h1');
+  pauseTitle.textContent = 'Game Paused';
+  pauseTitle.style.fontSize = '48px';
+  pauseTitle.style.margin = '0 0 30px 0';
+  pauseTitle.style.textShadow = '0 0 20px #3a86ff';
+
+  const powerupToggle = document.createElement('button');
+  powerupToggle.id = 'powerup-toggle';
+  powerupToggle.textContent = powerUpsEnabled ? '🔴 Disable Power-Ups' : '🟢 Enable Power-Ups';
+  powerupToggle.style.display = 'block';
+  powerupToggle.style.margin = '20px';
+  powerupToggle.style.padding = '15px 30px';
+  powerupToggle.style.fontSize = '20px';
+  powerupToggle.style.background = '#2c3e50';
+  powerupToggle.style.border = 'none';
+  powerupToggle.style.borderRadius = '8px';
+  powerupToggle.style.color = '#fff';
+  powerupToggle.style.cursor = 'pointer';
+
+  const resumeButton = document.createElement('button');
+  resumeButton.textContent = 'Resume Game ▶️';
+  resumeButton.style.display = 'block';
+  resumeButton.style.margin = '20px';
+  resumeButton.style.padding = '15px 30px';
+  resumeButton.style.fontSize = '20px';
+  resumeButton.style.background = 'linear-gradient(45deg, #3a86ff, #8338ec)';
+  resumeButton.style.border = 'none';
+  resumeButton.style.borderRadius = '8px';
+  resumeButton.style.color = '#fff';
+  resumeButton.style.cursor = 'pointer';
+
+  powerupToggle.onclick = () => {
+    powerUpsEnabled = !powerUpsEnabled;
+    powerupToggle.textContent = powerUpsEnabled ? '🔴 Disable Power-Ups' : '🟢 Enable Power-Ups';
+    if (!powerUpsEnabled) {
+      activePowerUp = null;
+      clearTimeout(powerUpTimeout);
+    }
+  };
+
+  pauseContent.appendChild(pauseTitle);
+  pauseContent.appendChild(powerupToggle);
+  pauseContent.appendChild(resumeButton);
+  pauseMenu.appendChild(pauseContent);
+  document.body.appendChild(pauseMenu);
+
+  pauseButton.onclick = togglePause;
+  resumeButton.onclick = togglePause;
+
+  window.addEventListener('resize', updatePauseButtonPosition);
+
+  upPressed = false;
+  downPressed = false;
+  document.onkeydown = function(e) {
+    if (e.key === 'w' || e.key === 'W') upPressed = true;
+    if (e.key === 's' || e.key === 'S') downPressed = true;
+  };
+  document.onkeyup = function(e) {
+    if (e.key === 'w' || e.key === 'W') upPressed = false;
+    if (e.key === 's' || e.key === 'S') downPressed = false;
+  };
+}
+
+function updatePauseButtonPosition() {
+  if (!canvas || !pauseButton) return;
+  const rect = canvas.getBoundingClientRect();
+  pauseButton.style.left = `${rect.right - pauseButton.offsetWidth - 20}px`;
+  pauseButton.style.top = `${rect.top - pauseButton.offsetHeight - 20}px`;
+}
+
+function togglePause() {
+  if (gameOver) return;
+  isPaused = !isPaused;
+  pauseButton.textContent = isPaused ? '▶️' : '⏸️';
+  pauseMenu.style.display = isPaused ? 'flex' : 'none';
+}
+
+function drawBackground() {
+  const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  grad.addColorStop(0, '#232946');
+  grad.addColorStop(1, '#3a86ff');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+function drawGlow(x, y, color, radius) {
+  ctx.save();
+  ctx.globalAlpha = 0.5;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 20;
+  ctx.fill();
+  ctx.restore();
+}
+
+function draw() {
+  drawBackground();
+
+  ctx.save();
+  ctx.strokeStyle = '#b8c1ec';
+  ctx.lineWidth = 3;
+  ctx.setLineDash([18, 18]);
+  ctx.beginPath();
+  ctx.moveTo(canvas.width/2, 0);
+  ctx.lineTo(canvas.width/2, canvas.height);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  if (powerUpsEnabled && activePowerUp) {
+    drawGlow(canvas.width/2, activePowerUp.y + activePowerUp.height/2, activePowerUp.type.glow, 30);
+    ctx.fillStyle = activePowerUp.type.color;
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(canvas.width/2 - 8, activePowerUp.y, 16, activePowerUp.height, 8);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = '24px Rubik, Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(activePowerUp.type.symbol, canvas.width/2, activePowerUp.y + activePowerUp.height/2 + 9);
+  }
+
+  ctx.save();
+  ctx.shadowColor = '#fff';
+  ctx.shadowBlur = 6;
+  ctx.fillStyle = '#f4d35e';
+  ctx.beginPath();
+  ctx.roundRect(10, playerPaddle.y, playerPaddle.width, playerPaddle.height, 8);
+  ctx.fill();
+  ctx.fillStyle = '#ee964b';
+  ctx.beginPath();
+  ctx.roundRect(canvas.width - 10 - aiPaddle.width, aiPaddle.y, aiPaddle.width, aiPaddle.height, 8);
+  ctx.fill();
+  ctx.restore();
+
+  balls.forEach(ball => {
+    drawGlow(ball.x, ball.y, '#fff', 20);
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.size/2, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.shadowColor = '#fff';
+    ctx.shadowBlur = 10;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = '#3a86ff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  });
+
+  ctx.font = 'bold 40px Rubik, Arial, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#fff';
+  ctx.fillText(playerScore, canvas.width/2 - 70, 48);
+  ctx.textAlign = 'right';
+  ctx.fillText(aiScore, canvas.width/2 + 70, 48);
+
+  if (waitingToServe && serveCountdown > 0) {
+    ctx.save();
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = '#232946';
+    ctx.fillRect(canvas.width/2 - 60, canvas.height/2 - 60, 120, 120);
+    ctx.restore();
+    ctx.font = 'bold 80px Rubik, Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#f4d35e';
+    ctx.fillText(serveCountdown, canvas.width/2, canvas.height/2 + 30);
+  }
+}
+
+function spawnPowerUp() {
+  if (!powerUpsEnabled) return;
+  if (activePowerUp || Math.random() > 0.02) return;
+  const types = Object.keys(POWERUP_TYPES);
+  const type = POWERUP_TYPES[types[Math.floor(Math.random() * types.length)]];
+  const segmentHeight = 44;
+  activePowerUp = {
+    type,
+    y: Math.floor(Math.random() * (canvas.height/segmentHeight)) * segmentHeight + 6,
+    height: segmentHeight - 12
+  };
+  powerUpTimeout = setTimeout(() => activePowerUp = null, 10000);
+}
+
+function checkPowerUpCollision(ball) {
+  if (!powerUpsEnabled || !activePowerUp) return;
+  if (ball.x + ball.size/2 > canvas.width/2 - 8 &&
+      ball.x - ball.size/2 < canvas.width/2 + 8 &&
+      ball.y + ball.size/2 > activePowerUp.y &&
+      ball.y - ball.size/2 < activePowerUp.y + activePowerUp.height) {
+    applyPowerUp(activePowerUp.type, ball.lastHitBy);
+    clearTimeout(powerUpTimeout);
+    activePowerUp = null;
+  }
+}
+
+function applyPowerUp(type, owner) {
+  if (type === POWERUP_TYPES.PADDLE_GROW) {
+    const paddle = owner === 'player' ? playerPaddle : aiPaddle;
+    if (paddle.powerUpTimeout) clearTimeout(paddle.powerUpTimeout);
+    paddle.height = 80 * 1.5;
+    paddle.powerUpTimeout = setTimeout(() => paddle.height = 80, type.duration);
+  }
+  if (type === POWERUP_TYPES.SLOWMO) {
+    const modifier = owner === 'ai' ? 1.25 : 0.8;
+    balls.forEach(b => {
+      b.speedX *= modifier;
+      b.speedY *= modifier;
+      capBallSpeed(b);
+    });
+    setTimeout(() => {
+      balls.forEach(b => {
+        b.speedX /= modifier;
+        b.speedY /= modifier;
+        capBallSpeed(b);
+      });
+    }, type.duration);
+  }
+  if (type === POWERUP_TYPES.MULTIBALL) {
+    const newBalls = balls.flatMap(b => [
+      { ...b, speedX: b.speedX * 1.2, speedY: b.speedY * 1.2, lastHitBy: owner },
+      { ...b, speedX: -b.speedX, speedY: -b.speedY, lastHitBy: owner }
+    ]);
+    newBalls.forEach(capBallSpeed);
+    balls.push(...newBalls);
+  }
+}
+
+function capBallSpeed(ball) {
+  const mag = Math.sqrt(ball.speedX ** 2 + ball.speedY ** 2);
+  if (mag > maxBallSpeed) {
+    ball.speedX = (ball.speedX / mag) * maxBallSpeed;
+    ball.speedY = (ball.speedY / mag) * maxBallSpeed;
+  }
+}
+
+function clamp(val, min, max) {
+  return Math.max(min, Math.min(max, val));
+}
+
+function resetBall() {
+  balls = [{
+    x: canvas.width/2,
+    y: canvas.height/2,
+    size: 16,
+    speedX: baseBallSpeedX,
+    speedY: baseBallSpeedY,
+    lastHitBy: null
+  }];
+  waitingToServe = true;
+  serveCountdown = 3;
+  if (countdownInterval) clearInterval(countdownInterval);
+  countdownInterval = setInterval(() => {
+    if (!isPaused && !gameOver) {
+      serveCountdown--;
+      if (serveCountdown === 0) {
+        clearInterval(countdownInterval);
+        setTimeout(() => {
+          balls.forEach(b => {
+            b.speedX = baseBallSpeedX * (Math.random() > 0.5 ? 1 : -1);
+            b.speedY = baseBallSpeedY * (Math.random() * 2 - 1);
+          });
+          waitingToServe = false;
+        }, 500);
+      }
+    }
+  }, 1000);
+}
+
+function update() {
+  if (isPaused || gameOver) return;
+  spawnPowerUp();
+
+  if (upPressed) playerPaddle.y -= 6;
+  if (downPressed) playerPaddle.y += 6;
+  playerPaddle.y = clamp(playerPaddle.y, 0, canvas.height - playerPaddle.height);
+
+  if (!waitingToServe && balls.length > 0) {
+    const targetY = balls[0].y - aiPaddle.height/2;
+    aiPaddle.y += clamp(targetY - aiPaddle.y, -6 * 0.7, 6 * 0.7);
+    aiPaddle.y = clamp(aiPaddle.y, 0, canvas.height - aiPaddle.height);
+  }
+
+  balls.forEach(ball => {
+    if (!waitingToServe) {
+      ball.x += ball.speedX;
+      ball.y += ball.speedY;
+    }
+    checkPowerUpCollision(ball);
+
+    if (ball.y <= 0 || ball.y >= canvas.height) ball.speedY *= -1;
+
+    if (ball.speedX < 0 &&
+        ball.x - ball.size/2 <= 10 + playerPaddle.width &&
+        ball.y + ball.size/2 >= playerPaddle.y &&
+        ball.y - ball.size/2 <= playerPaddle.y + playerPaddle.height) {
+      ball.x = 10 + playerPaddle.width + ball.size/2;
+      ball.speedX = Math.abs(ball.speedX) * speedIncreaseFactor;
+      ball.speedY += (Math.random() - 0.5) * 2;
+      capBallSpeed(ball);
+      ball.lastHitBy = 'player';
+    }
+
+    if (ball.speedX > 0 &&
+        ball.x + ball.size/2 >= canvas.width - 10 - aiPaddle.width &&
+        ball.y + ball.size/2 >= aiPaddle.y &&
+        ball.y - ball.size/2 <= aiPaddle.y + aiPaddle.height) {
+      ball.x = canvas.width - 10 - aiPaddle.width - ball.size/2;
+      ball.speedX = -Math.abs(ball.speedX) * speedIncreaseFactor;
+      ball.speedY += (Math.random() - 0.5) * 2;
+      capBallSpeed(ball);
+      ball.lastHitBy = 'ai';
+    }
+
+    if (ball.x < 0) {
+      aiScore++;
+      balls.splice(balls.indexOf(ball), 1);
+    }
+    if (ball.x > canvas.width) {
+      playerScore++;
+      balls.splice(balls.indexOf(ball), 1);
+    }
+  });
+
+  if (playerScore >= 9 || aiScore >= 9) {
+    gameOver = true;
+    cancelAnimationFrame(animationId);
+    pauseButton.style.display = 'none';
+    winnerMsg.textContent = playerScore >= 9 ? "🏆 You Win! 🏆" : "🤖 AI Wins! 🤖";
+    startMenu.style.display = 'flex';
+    return;
+  }
+
+  if (balls.length === 0 && !gameOver) resetBall();
+}
+
+function loop() {
+  update();
+  draw();
+  if (!gameOver) animationId = requestAnimationFrame(loop);
+}
