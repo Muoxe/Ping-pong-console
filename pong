@@ -1,70 +1,57 @@
-
+// Remove previous elements
+document.getElementById('pong-overlay')?.remove();
 document.getElementById('pingpong-canvas')?.remove();
 document.getElementById('pause-button')?.remove();
 document.getElementById('start-menu')?.remove();
 document.getElementById('pause-menu')?.remove();
+document.getElementById('pong-highscore-badge')?.remove();
 
-const startMenu = document.createElement('div');
-startMenu.id = 'start-menu';
-Object.assign(startMenu.style, {
+// Overlay to hide background
+const overlay = document.createElement('div');
+overlay.id = 'pong-overlay';
+Object.assign(overlay.style, {
   position: 'fixed',
-  top: '0',
-  left: '0',
+  zIndex: 10000,
+  top: 0,
+  left: 0,
   width: '100vw',
   height: '100vh',
-  background: 'rgba(0, 0, 0, 0.9)',
-  display: 'flex',
-  justifyContent: 'center',
-  alignItems: 'center',
-  zIndex: 10002,
-  backdropFilter: 'blur(5px)'
+  background: 'radial-gradient(ellipse at 50% 30%, #232946 70%, #12121a 100%)'
 });
+document.body.appendChild(overlay);
 
-const startContent = document.createElement('div');
-startContent.style.textAlign = 'center';
-startContent.style.color = '#fff';
-startContent.style.fontFamily = 'Arial, sans-serif';
+// High score badge
+const highScoreBadge = document.createElement('div');
+highScoreBadge.id = 'pong-highscore-badge';
+Object.assign(highScoreBadge.style, {
+  position: 'fixed',
+  top: '32px',
+  left: '50%',
+  transform: 'translateX(-50%)',
+  zIndex: 10003,
+  background: 'linear-gradient(90deg, #ffd700 0%, #fffbe0 100%)',
+  color: '#232946',
+  fontFamily: 'Rubik, Arial, sans-serif',
+  fontWeight: 'bold',
+  fontSize: '28px',
+  padding: '10px 38px 10px 28px',
+  borderRadius: '32px',
+  boxShadow: '0 4px 24px #0007, 0 0 0 4px #ffe066 inset',
+  display: 'flex',
+  alignItems: 'center',
+  letterSpacing: '1px',
+  textShadow: '0 2px 10px #fff8'
+});
+const trophy = document.createElement('span');
+trophy.textContent = '🏆';
+trophy.style.fontSize = '32px';
+trophy.style.marginRight = '18px';
+highScoreBadge.appendChild(trophy);
+const highScoreText = document.createElement('span');
+highScoreBadge.appendChild(highScoreText);
+document.body.appendChild(highScoreBadge);
 
-const title = document.createElement('h1');
-title.textContent = 'Ping Pong';
-title.style.fontSize = '48px';
-title.style.margin = '0 0 40px 0';
-title.style.textShadow = '0 0 20px #3a86ff';
-
-const winnerMsg = document.createElement('div');
-winnerMsg.style.fontSize = '32px';
-winnerMsg.style.margin = '0 0 20px 0';
-winnerMsg.style.textShadow = '0 0 10px #fff';
-winnerMsg.textContent = '';
-
-const difficultyMenu = document.createElement('div');
-difficultyMenu.style.margin = '20px 0';
-
-const difficultyLabel = document.createElement('div');
-difficultyLabel.textContent = 'Select Difficulty:';
-difficultyLabel.style.fontSize = '24px';
-difficultyLabel.style.margin = '0 0 15px 0';
-
-const easyButton = createDifficultyButton('😌 Easy');
-const mediumButton = createDifficultyButton('🎯 Medium');
-const hardButton = createDifficultyButton('🔥 Hard');
-
-difficultyMenu.appendChild(difficultyLabel);
-difficultyMenu.appendChild(easyButton);
-difficultyMenu.appendChild(mediumButton);
-difficultyMenu.appendChild(hardButton);
-
-const powerupButton = createModeButton('🎮 Power-Up Mode', '#3a86ff', '#8338ec');
-const classicButton = createModeButton('🏓 Classic Mode', '#2ecc71', '#27ae60');
-
-startContent.appendChild(title);
-startContent.appendChild(winnerMsg);
-startContent.appendChild(difficultyMenu);
-startContent.appendChild(powerupButton);
-startContent.appendChild(classicButton);
-startMenu.appendChild(startContent);
-document.body.appendChild(startMenu);
-
+// --- Game variables ---
 let powerUpsEnabled = true;
 let aiDifficulty = 'medium';
 let canvas, pauseButton, pauseMenu, ctx;
@@ -74,6 +61,16 @@ let waitingToServe = false, serveCountdown = 0, countdownInterval;
 let isPaused = false;
 let animationId;
 let gameOver = false;
+let highScore = +localStorage.getItem('pongHighScore') || 0;
+let soundEnabled = true;
+
+// --- Sounds ---
+const pongSounds = {
+  hit: new Audio('https://cdn.pixabay.com/audio/2022/07/26/audio_124bfae2b0.mp3'),
+  score: new Audio('https://cdn.pixabay.com/audio/2022/07/26/audio_124bfae2b0.mp3'),
+  powerup: new Audio('https://cdn.pixabay.com/audio/2022/07/26/audio_124bfae2b0.mp3'),
+  win: new Audio('https://cdn.pixabay.com/audio/2022/07/26/audio_124bfae2b0.mp3')
+};
 
 const baseBallSpeedX = 4;
 const baseBallSpeedY = 3.2;
@@ -86,6 +83,44 @@ const POWERUP_TYPES = {
   PADDLE_GROW: { color: '#3ae374', symbol: '▲', duration: 5000, glow: '#caffbf' }
 };
 
+// --- Start Menu ---
+const startMenu = document.createElement('div');
+Object.assign(startMenu.style, {
+  position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+  background: 'linear-gradient(120deg, #232946 0%, #3a86ff 100%)',
+  display: 'flex', justifyContent: 'center', alignItems: 'center',
+  zIndex: 10002, backdropFilter: 'blur(5px)'
+});
+startMenu.id = 'start-menu';
+
+const startContent = document.createElement('div');
+Object.assign(startContent.style, {
+  textAlign: 'center', color: '#fff', fontFamily: 'Rubik, Arial, sans-serif',
+  background: 'rgba(30,30,60,0.95)', padding: '48px 48px 36px 48px',
+  borderRadius: '24px', boxShadow: '0 8px 32px rgba(0,0,0,0.3)'
+});
+
+const title = document.createElement('h1');
+title.textContent = '🎾 Ping Pong';
+title.style.fontSize = '56px';
+title.style.margin = '0 0 16px 0';
+title.style.letterSpacing = '2px';
+title.style.textShadow = '0 0 20px #3a86ff';
+
+const winnerMsg = document.createElement('div');
+winnerMsg.style.fontSize = '32px';
+winnerMsg.style.margin = '0 0 20px 0';
+winnerMsg.style.textShadow = '0 0 10px #fff';
+winnerMsg.textContent = '';
+
+const difficultyMenu = document.createElement('div');
+difficultyMenu.style.margin = '20px 0 32px 0';
+
+const difficultyLabel = document.createElement('div');
+difficultyLabel.textContent = 'Difficulty:';
+difficultyLabel.style.fontSize = '24px';
+difficultyLabel.style.margin = '0 0 10px 0';
+
 function createDifficultyButton(text) {
   const button = document.createElement('button');
   button.textContent = text;
@@ -93,15 +128,25 @@ function createDifficultyButton(text) {
   button.style.width = '120px';
   button.style.margin = '10px';
   button.style.padding = '12px';
-  button.style.fontSize = '18px';
-  button.style.background = '#2c3e50';
-  button.style.border = 'none';
+  button.style.fontSize = '20px';
+  button.style.background = '#232946';
+  button.style.border = '2px solid #fff';
   button.style.borderRadius = '8px';
   button.style.color = '#fff';
   button.style.cursor = 'pointer';
-  button.style.transition = 'transform 0.2s';
+  button.style.transition = 'background 0.2s, border 0.2s';
+  button.onmouseenter = () => button.style.background = '#3a86ff';
+  button.onmouseleave = () => highlightDifficulty();
   return button;
 }
+const easyButton = createDifficultyButton('😌 Easy');
+const mediumButton = createDifficultyButton('🎯 Medium');
+const hardButton = createDifficultyButton('🔥 Hard');
+
+difficultyMenu.appendChild(difficultyLabel);
+difficultyMenu.appendChild(easyButton);
+difficultyMenu.appendChild(mediumButton);
+difficultyMenu.appendChild(hardButton);
 
 function createModeButton(text, color1, color2) {
   const button = document.createElement('button');
@@ -116,20 +161,39 @@ function createModeButton(text, color1, color2) {
   button.style.borderRadius = '12px';
   button.style.color = '#fff';
   button.style.cursor = 'pointer';
-  button.style.transition = 'transform 0.2s';
+  button.style.fontWeight = 'bold';
+  button.style.letterSpacing = '1px';
+  button.style.transition = 'transform 0.2s, box-shadow 0.2s';
+  button.onmouseenter = () => button.style.boxShadow = '0 0 24px #fff7';
+  button.onmouseleave = () => button.style.boxShadow = '';
   return button;
 }
+const powerupButton = createModeButton('🎮 Power-Up Mode', '#3a86ff', '#8338ec');
+const classicButton = createModeButton('🏓 Classic Mode', '#2ecc71', '#27ae60');
+
+startContent.appendChild(title);
+startContent.appendChild(winnerMsg);
+startContent.appendChild(difficultyMenu);
+startContent.appendChild(powerupButton);
+startContent.appendChild(classicButton);
+startMenu.appendChild(startContent);
+document.body.appendChild(startMenu);
 
 easyButton.onclick = () => { aiDifficulty = 'easy'; highlightDifficulty(); };
 mediumButton.onclick = () => { aiDifficulty = 'medium'; highlightDifficulty(); };
 hardButton.onclick = () => { aiDifficulty = 'hard'; highlightDifficulty(); };
-
 function highlightDifficulty() {
-  easyButton.style.outline = aiDifficulty === 'easy' ? '3px solid #f4d35e' : '';
-  mediumButton.style.outline = aiDifficulty === 'medium' ? '3px solid #f4d35e' : '';
-  hardButton.style.outline = aiDifficulty === 'hard' ? '3px solid #f4d35e' : '';
+  easyButton.style.background = aiDifficulty === 'easy' ? '#3a86ff' : '#232946';
+  easyButton.style.border = aiDifficulty === 'easy' ? '2px solid #f4d35e' : '2px solid #fff';
+  mediumButton.style.background = aiDifficulty === 'medium' ? '#3a86ff' : '#232946';
+  mediumButton.style.border = aiDifficulty === 'medium' ? '2px solid #f4d35e' : '2px solid #fff';
+  hardButton.style.background = aiDifficulty === 'hard' ? '#3a86ff' : '#232946';
+  hardButton.style.border = aiDifficulty === 'hard' ? '2px solid #f4d35e' : '2px solid #fff';
 }
 highlightDifficulty();
+
+powerupButton.onclick = () => initializeGame(true);
+classicButton.onclick = () => initializeGame(false);
 
 function initializeGame(withPowerups) {
   powerUpsEnabled = withPowerups;
@@ -142,9 +206,6 @@ function initializeGame(withPowerups) {
   resetBall();
   loop();
 }
-
-powerupButton.onclick = () => initializeGame(true);
-classicButton.onclick = () => initializeGame(false);
 
 function createGameElements() {
   document.getElementById('pingpong-canvas')?.remove();
@@ -161,7 +222,7 @@ function createGameElements() {
   canvas.style.transform = 'translate(-50%, -50%)';
   canvas.style.borderRadius = '24px';
   canvas.style.boxShadow = '0 8px 32px rgba(0,0,0,0.4), 0 0 0 4px #222 inset';
-  canvas.style.zIndex = 9999;
+  canvas.style.zIndex = 10001;
   document.body.appendChild(canvas);
 
   ctx = canvas.getContext('2d');
@@ -190,7 +251,7 @@ function createGameElements() {
   pauseButton.style.borderRadius = '12px';
   pauseButton.style.color = '#fff';
   pauseButton.style.cursor = 'pointer';
-  pauseButton.style.zIndex = '10000';
+  pauseButton.style.zIndex = '10003';
   pauseButton.style.transition = 'transform 0.2s';
   document.body.appendChild(pauseButton);
   updatePauseButtonPosition();
@@ -206,16 +267,20 @@ function createGameElements() {
   pauseMenu.style.display = 'none';
   pauseMenu.style.justifyContent = 'center';
   pauseMenu.style.alignItems = 'center';
-  pauseMenu.style.zIndex = '10001';
+  pauseMenu.style.zIndex = '10004';
   pauseMenu.style.backdropFilter = 'blur(5px)';
 
   const pauseContent = document.createElement('div');
   pauseContent.style.textAlign = 'center';
   pauseContent.style.color = '#fff';
-  pauseContent.style.fontFamily = 'Arial, sans-serif';
+  pauseContent.style.fontFamily = 'Rubik, Arial, sans-serif';
+  pauseContent.style.background = 'rgba(30,30,60,0.97)';
+  pauseContent.style.padding = '48px 48px 36px 48px';
+  pauseContent.style.borderRadius = '24px';
+  pauseContent.style.boxShadow = '0 8px 32px rgba(0,0,0,0.3)';
 
   const pauseTitle = document.createElement('h1');
-  pauseTitle.textContent = 'Game Paused';
+  pauseTitle.textContent = 'Paused';
   pauseTitle.style.fontSize = '48px';
   pauseTitle.style.margin = '0 0 30px 0';
   pauseTitle.style.textShadow = '0 0 20px #3a86ff';
@@ -224,7 +289,7 @@ function createGameElements() {
   powerupToggle.id = 'powerup-toggle';
   powerupToggle.textContent = powerUpsEnabled ? '🔴 Disable Power-Ups' : '🟢 Enable Power-Ups';
   powerupToggle.style.display = 'block';
-  powerupToggle.style.margin = '20px';
+  powerupToggle.style.margin = '20px auto 0 auto';
   powerupToggle.style.padding = '15px 30px';
   powerupToggle.style.fontSize = '20px';
   powerupToggle.style.background = '#2c3e50';
@@ -233,17 +298,47 @@ function createGameElements() {
   powerupToggle.style.color = '#fff';
   powerupToggle.style.cursor = 'pointer';
 
+  const muteButton = document.createElement('button');
+  muteButton.textContent = soundEnabled ? '🔊 Sound: ON' : '🔇 Sound: OFF';
+  muteButton.style.display = 'block';
+  muteButton.style.margin = '20px auto 0 auto';
+  muteButton.style.padding = '15px 30px';
+  muteButton.style.fontSize = '20px';
+  muteButton.style.background = '#232946';
+  muteButton.style.border = 'none';
+  muteButton.style.borderRadius = '8px';
+  muteButton.style.color = '#fff';
+  muteButton.style.cursor = 'pointer';
+  muteButton.onclick = () => {
+    soundEnabled = !soundEnabled;
+    muteButton.textContent = soundEnabled ? '🔊 Sound: ON' : '🔇 Sound: OFF';
+  };
+
   const resumeButton = document.createElement('button');
-  resumeButton.textContent = 'Resume Game ▶️';
+  resumeButton.textContent = '▶️ Resume';
   resumeButton.style.display = 'block';
-  resumeButton.style.margin = '20px';
+  resumeButton.style.margin = '24px auto 0 auto';
   resumeButton.style.padding = '15px 30px';
-  resumeButton.style.fontSize = '20px';
+  resumeButton.style.fontSize = '22px';
   resumeButton.style.background = 'linear-gradient(45deg, #3a86ff, #8338ec)';
   resumeButton.style.border = 'none';
   resumeButton.style.borderRadius = '8px';
   resumeButton.style.color = '#fff';
   resumeButton.style.cursor = 'pointer';
+  resumeButton.style.fontWeight = 'bold';
+
+  const giveUpButton = document.createElement('button');
+  giveUpButton.textContent = '🏳️ Give Up';
+  giveUpButton.style.display = 'block';
+  giveUpButton.style.margin = '24px auto 0 auto';
+  giveUpButton.style.padding = '15px 30px';
+  giveUpButton.style.fontSize = '22px';
+  giveUpButton.style.background = 'linear-gradient(45deg, #e63946, #ffb4a2)';
+  giveUpButton.style.border = 'none';
+  giveUpButton.style.borderRadius = '8px';
+  giveUpButton.style.color = '#fff';
+  giveUpButton.style.cursor = 'pointer';
+  giveUpButton.style.fontWeight = 'bold';
 
   powerupToggle.onclick = () => {
     powerUpsEnabled = !powerUpsEnabled;
@@ -254,14 +349,25 @@ function createGameElements() {
     }
   };
 
+  resumeButton.onclick = togglePause;
+  giveUpButton.onclick = () => {
+    gameOver = true;
+    pauseMenu.style.display = 'none';
+    pauseButton.style.display = 'none';
+    winnerMsg.textContent = '';
+    startMenu.style.display = 'flex';
+    cancelAnimationFrame(animationId);
+  };
+
   pauseContent.appendChild(pauseTitle);
   pauseContent.appendChild(powerupToggle);
+  pauseContent.appendChild(muteButton);
   pauseContent.appendChild(resumeButton);
+  pauseContent.appendChild(giveUpButton);
   pauseMenu.appendChild(pauseContent);
   document.body.appendChild(pauseMenu);
 
   pauseButton.onclick = togglePause;
-  resumeButton.onclick = togglePause;
 
   window.addEventListener('resize', updatePauseButtonPosition);
 
@@ -270,6 +376,7 @@ function createGameElements() {
   document.onkeydown = function(e) {
     if (e.key === 'w' || e.key === 'W') upPressed = true;
     if (e.key === 's' || e.key === 'S') downPressed = true;
+    if (e.key === 'p' || e.key === 'P') togglePause();
   };
   document.onkeyup = function(e) {
     if (e.key === 'w' || e.key === 'W') upPressed = false;
@@ -309,6 +416,35 @@ function drawGlow(x, y, color, radius) {
   ctx.shadowBlur = 20;
   ctx.fill();
   ctx.restore();
+}
+
+const particles = [];
+function addParticles(x, y) {
+  for (let i = 0; i < 8; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 3,
+      vy: (Math.random() - 0.5) * 3,
+      alpha: 1,
+      size: Math.random() * 2 + 1
+    });
+  }
+}
+function drawParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    ctx.save();
+    ctx.globalAlpha = p.alpha;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    ctx.restore();
+    p.x += p.vx;
+    p.y += p.vy;
+    p.alpha -= 0.03;
+    if (p.alpha <= 0) particles.splice(i, 1);
+  }
 }
 
 function draw() {
@@ -367,6 +503,8 @@ function draw() {
     ctx.stroke();
   });
 
+  drawParticles();
+
   ctx.font = 'bold 40px Rubik, Arial, sans-serif';
   ctx.textAlign = 'left';
   ctx.fillStyle = '#fff';
@@ -407,6 +545,7 @@ function checkPowerUpCollision(ball) {
       ball.x - ball.size/2 < canvas.width/2 + 8 &&
       ball.y + ball.size/2 > activePowerUp.y &&
       ball.y - ball.size/2 < activePowerUp.y + activePowerUp.height) {
+    if (soundEnabled) pongSounds.powerup.play();
     applyPowerUp(activePowerUp.type, ball.lastHitBy);
     clearTimeout(powerUpTimeout);
     activePowerUp = null;
@@ -494,7 +633,6 @@ function update() {
   if (downPressed) playerPaddle.y += 6;
   playerPaddle.y = clamp(playerPaddle.y, 0, canvas.height - playerPaddle.height);
 
-  // AI movement with difficulty
   if (!waitingToServe && balls.length > 0) {
     let targetY = balls[0].y - aiPaddle.height/2;
     let speedMultiplier = 0.7;
@@ -541,6 +679,8 @@ function update() {
       ball.speedY += (Math.random() - 0.5) * 2;
       capBallSpeed(ball);
       ball.lastHitBy = 'player';
+      addParticles(ball.x, ball.y);
+      if (soundEnabled) pongSounds.hit.play();
     }
 
     if (ball.speedX > 0 &&
@@ -552,17 +692,27 @@ function update() {
       ball.speedY += (Math.random() - 0.5) * 2;
       capBallSpeed(ball);
       ball.lastHitBy = 'ai';
+      addParticles(ball.x, ball.y);
+      if (soundEnabled) pongSounds.hit.play();
     }
 
     if (ball.x < 0) {
       aiScore++;
       balls.splice(balls.indexOf(ball), 1);
+      if (soundEnabled) pongSounds.score.play();
     }
     if (ball.x > canvas.width) {
       playerScore++;
       balls.splice(balls.indexOf(ball), 1);
+      if (soundEnabled) pongSounds.score.play();
     }
   });
+
+  if (playerScore > highScore) {
+    highScore = playerScore;
+    localStorage.setItem('pongHighScore', highScore);
+  }
+  highScoreText.textContent = `${highScore}`;
 
   if (playerScore >= 9 || aiScore >= 9) {
     gameOver = true;
@@ -570,6 +720,7 @@ function update() {
     pauseButton.style.display = 'none';
     winnerMsg.textContent = playerScore >= 9 ? "🏆 You Win! 🏆" : "🤖 AI Wins! 🤖";
     startMenu.style.display = 'flex';
+    if (soundEnabled) pongSounds.win.play();
     return;
   }
 
@@ -581,3 +732,4 @@ function loop() {
   draw();
   if (!gameOver) animationId = requestAnimationFrame(loop);
 }
+
